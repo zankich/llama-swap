@@ -14,6 +14,12 @@ type PeerConfig struct {
 	Alias    map[string]string `yaml:"alias"`
 	Filters  Filters           `yaml:"filters"`
 
+	// ProxyBaseURL overrides the base URL for upstream API requests.
+	// Incoming /v1/... paths are stripped and replaced with this base.
+	// Defaults to <proxy>/v1.
+	ProxyBaseURL       string   `yaml:"proxyBaseURL"`
+	ProxyBaseURLParsed *url.URL `yaml:"-"`
+
 	// Timeout settings for proxy connections
 	Timeouts TimeoutsConfig `yaml:"timeouts"`
 }
@@ -53,6 +59,16 @@ func (c *PeerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return fmt.Errorf("invalid peer proxy URL (%s): %w", defaults.Proxy, err)
 	}
 	defaults.ProxyURL = parsedURL
+
+	// Default proxyBaseURL to <proxy>/v1
+	if defaults.ProxyBaseURL == "" {
+		defaults.ProxyBaseURL = defaults.Proxy + "/v1"
+	}
+	parsedBaseURL, err := url.Parse(defaults.ProxyBaseURL)
+	if err != nil {
+		return fmt.Errorf("invalid proxyBaseURL (%s): %w", defaults.ProxyBaseURL, err)
+	}
+	defaults.ProxyBaseURLParsed = parsedBaseURL
 
 	// Validate models is not empty
 	if len(defaults.Models) == 0 {

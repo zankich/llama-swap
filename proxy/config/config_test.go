@@ -1523,6 +1523,35 @@ peers:
 	assert.Equal(t, 120, peerConfig.Timeouts.ResponseHeader)
 }
 
+func TestConfig_PeerBaseURL_Default(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: https://api.example.com
+    models:
+      - model-a
+`
+	config, err := LoadConfigFromReader(strings.NewReader(content))
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.example.com/v1", config.Peers["peer1"].ProxyBaseURL)
+	assert.Equal(t, "/v1", config.Peers["peer1"].ProxyBaseURLParsed.Path)
+}
+
+func TestConfig_PeerBaseURL_Custom(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: https://api.example.com
+    proxyBaseURL: https://api.example.com/api/paas/v4
+    models:
+      - model-a
+`
+	config, err := LoadConfigFromReader(strings.NewReader(content))
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.example.com/api/paas/v4", config.Peers["peer1"].ProxyBaseURL)
+	assert.Equal(t, "/api/paas/v4", config.Peers["peer1"].ProxyBaseURLParsed.Path)
+}
+
 func TestConfig_PeerAlias_YAMLParsing(t *testing.T) {
 	content := `
 peers:

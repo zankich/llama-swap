@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"runtime"
 	"sort"
 	"strings"
@@ -55,16 +56,26 @@ func NewPeerProxy(peers config.PeerDictionaryConfig, proxyLogger *logmon.Monitor
 			IdleConnTimeout:       time.Duration(peer.Timeouts.IdleConn) * time.Second,
 		}
 
-		// Create reverse proxy for this peer
-		reverseProxy := httputil.NewSingleHostReverseProxy(peer.ProxyURL)
-		reverseProxy.Transport = peerTransport
-
-		// Wrap Director to set Host header for remote hosts (not localhost)
-		originalDirector := reverseProxy.Director
-		reverseProxy.Director = func(req *http.Request) {
-			originalDirector(req)
-			// Ensure Host header matches target URL for remote proxying
-			req.Host = req.URL.Host
+		// Resolve base URL: use proxyBaseURL if set, otherwise default to <proxy>/v1
+		baseURL := peer.ProxyBaseURLParsed
+		if baseURL == nil {
+			baseURL = &url.URL{
+				Scheme: peer.ProxyURL.Scheme,
+				Host:   peer.ProxyURL.Host,
+				Path:   peer.ProxyURL.Path + "/v1",
+			}
+		}
+		reverseProxy := &httputil.ReverseProxy{
+			Director: func(req *http.Request) {
+				req.URL.Scheme = baseURL.Scheme
+				req.URL.Host = baseURL.Host
+				// Strip /v1 prefix from incoming path and prepend base path
+				path := strings.TrimPrefix(req.URL.Path, "/v1")
+				req.URL.Path = baseURL.Path + path
+				req.URL.RawQuery = req.URL.RawQuery
+				req.Host = baseURL.Host
+			},
+			Transport: peerTransport,
 		}
 
 		reverseProxy.ModifyResponse = func(resp *http.Response) error {

@@ -319,6 +319,66 @@ func TestNewPeerProxy_DuplicateAliasWarning(t *testing.T) {
 	assert.Equal(t, "alpha", pm.proxyMap["model-a-alias"].peerID)
 }
 
+func TestNewPeerProxy_ProxyBaseURL(t *testing.T) {
+	t.Run("default baseURL strips /v1 and prepends proxy/v1", func(t *testing.T) {
+		var receivedPath string
+		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{}`))
+		}))
+		defer testServer.Close()
+
+		proxyURL, _ := url.Parse(testServer.URL)
+		peers := config.PeerDictionaryConfig{
+			"test-peer": config.PeerConfig{
+				Proxy:    testServer.URL,
+				ProxyURL: proxyURL,
+				Models:   []string{"model-a"},
+			},
+		}
+
+		pm, err := NewPeerProxy(peers, testLogger)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		w := httptest.NewRecorder()
+		err = pm.ProxyRequest("model-a", w, req)
+		require.NoError(t, err)
+		assert.Equal(t, "/v1/chat/completions", receivedPath)
+	})
+
+	t.Run("custom proxyBaseURL strips /v1 and uses custom base", func(t *testing.T) {
+		var receivedPath string
+		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{}`))
+		}))
+		defer testServer.Close()
+
+		proxyURL, _ := url.Parse(testServer.URL)
+		baseURL, _ := url.Parse(testServer.URL + "/api/paas/v4")
+		peers := config.PeerDictionaryConfig{
+			"test-peer": config.PeerConfig{
+				Proxy:              testServer.URL,
+				ProxyURL:           proxyURL,
+				ProxyBaseURLParsed: baseURL,
+				Models:             []string{"model-a"},
+			},
+		}
+
+		pm, err := NewPeerProxy(peers, testLogger)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		w := httptest.NewRecorder()
+		err = pm.ProxyRequest("model-a", w, req)
+		require.NoError(t, err)
+		assert.Equal(t, "/api/paas/v4/chat/completions", receivedPath)
+	})
+}
+
 func TestNewPeerProxy_CustomTimeouts(t *testing.T) {
 	proxyURL, _ := url.Parse("http://localhost:8080")
 
