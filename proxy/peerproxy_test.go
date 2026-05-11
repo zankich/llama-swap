@@ -268,6 +268,57 @@ func TestProxyRequest_SSEHeaderModification(t *testing.T) {
 	assert.Equal(t, "no", w.Header().Get("X-Accel-Buffering"))
 }
 
+func TestNewPeerProxy_Aliases(t *testing.T) {
+	proxyURL1, _ := url.Parse("http://peer1.example.com:8080")
+	proxyURL2, _ := url.Parse("http://peer2.example.com:8080")
+	peers := config.PeerDictionaryConfig{
+		"alpha": config.PeerConfig{
+			Proxy:    "http://peer1.example.com:8080",
+			ProxyURL: proxyURL1,
+			Models:   []string{"model-a"},
+		},
+		"beta": config.PeerConfig{
+			Proxy:    "http://peer2.example.com:8080",
+			ProxyURL: proxyURL2,
+			Models:   []string{"model-a"},
+			Alias:    map[string]string{"model-a-oai": "model-a"},
+		},
+	}
+
+	pm, err := NewPeerProxy(peers, testLogger)
+	require.NoError(t, err)
+
+	assert.True(t, pm.HasPeerModel("model-a"))
+	assert.True(t, pm.HasPeerModel("model-a-oai"))
+	assert.Len(t, pm.proxyMap, 2)
+
+	assert.Equal(t, "model-a", pm.GetModelRewrite("model-a-oai"))
+	assert.Equal(t, "", pm.GetModelRewrite("model-a"))
+}
+
+func TestNewPeerProxy_DuplicateAliasWarning(t *testing.T) {
+	proxyURL, _ := url.Parse("http://peer1.example.com:8080")
+	peers := config.PeerDictionaryConfig{
+		"alpha": config.PeerConfig{
+			Proxy:    "http://peer1.example.com:8080",
+			ProxyURL: proxyURL,
+			Models:   []string{"model-a"},
+			Alias:    map[string]string{"model-a-alias": "model-a"},
+		},
+		"beta": config.PeerConfig{
+			Proxy:    "http://peer1.example.com:8080",
+			ProxyURL: proxyURL,
+			Models:   []string{},
+			Alias:    map[string]string{"model-a-alias": "model-a"},
+		},
+	}
+
+	pm, err := NewPeerProxy(peers, testLogger)
+	require.NoError(t, err)
+	assert.True(t, pm.HasPeerModel("model-a-alias"))
+	assert.Equal(t, "alpha", pm.proxyMap["model-a-alias"].peerID)
+}
+
 func TestNewPeerProxy_CustomTimeouts(t *testing.T) {
 	proxyURL, _ := url.Parse("http://localhost:8080")
 

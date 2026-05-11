@@ -551,6 +551,45 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 		config.Peers[peerName] = peerConfig
 	}
 
+	// Validate peer aliases
+	allPeerModels := make(map[string]string) // modelID -> peerName
+	seenAliases := make(map[string]string)   // aliasKey -> peerName
+	for peerName, peerConfig := range config.Peers {
+		for _, m := range peerConfig.Models {
+			allPeerModels[m] = peerName
+		}
+	}
+
+	for peerName, peerConfig := range config.Peers {
+		modelSet := make(map[string]bool, len(peerConfig.Models))
+		for _, m := range peerConfig.Models {
+			modelSet[m] = true
+		}
+
+		for aliasKey, canonicalName := range peerConfig.Alias {
+			if !modelSet[canonicalName] {
+				return Config{}, fmt.Errorf("peers.%s.alias[%s]: canonical model '%s' not found in models list", peerName, aliasKey, canonicalName)
+			}
+
+			if _, exists := config.Models[aliasKey]; exists {
+				return Config{}, fmt.Errorf("peers.%s.alias[%s]: conflicts with local model ID", peerName, aliasKey)
+			}
+
+			if _, exists := config.aliases[aliasKey]; exists {
+				return Config{}, fmt.Errorf("peers.%s.alias[%s]: conflicts with local model alias", peerName, aliasKey)
+			}
+
+			if existingPeer, exists := allPeerModels[aliasKey]; exists {
+				return Config{}, fmt.Errorf("peers.%s.alias[%s]: conflicts with model in peer %s", peerName, aliasKey, existingPeer)
+			}
+
+			if existingPeer, exists := seenAliases[aliasKey]; exists {
+				return Config{}, fmt.Errorf("peers.%s.alias[%s]: conflicts with peer %s alias", peerName, aliasKey, existingPeer)
+			}
+			seenAliases[aliasKey] = peerName
+		}
+	}
+
 	return config, nil
 }
 

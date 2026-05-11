@@ -18,6 +18,7 @@ type peerProxyMember struct {
 	peerID       string
 	reverseProxy *httputil.ReverseProxy
 	apiKey       string
+	modelRewrite string
 }
 
 type PeerProxy struct {
@@ -96,6 +97,20 @@ func NewPeerProxy(peers config.PeerDictionaryConfig, proxyLogger *logmon.Monitor
 			}
 			proxyMap[modelID] = pp
 		}
+
+		// Map each alias to this peer's proxy
+		for aliasName, canonicalModel := range peer.Alias {
+			if _, found := proxyMap[aliasName]; found {
+				proxyLogger.Warnf("peer %s: alias %s already mapped to another peer, skipping", peerID, aliasName)
+				continue
+			}
+			proxyMap[aliasName] = &peerProxyMember{
+				peerID:       pp.peerID,
+				reverseProxy: pp.reverseProxy,
+				apiKey:       pp.apiKey,
+				modelRewrite: canonicalModel,
+			}
+		}
 	}
 
 	return &PeerProxy{
@@ -121,6 +136,14 @@ func (p *PeerProxy) GetPeerFilters(modelID string) config.Filters {
 		return config.Filters{}
 	}
 	return peer.Filters
+}
+
+func (p *PeerProxy) GetModelRewrite(modelID string) string {
+	pp, found := p.proxyMap[modelID]
+	if !found {
+		return ""
+	}
+	return pp.modelRewrite
 }
 
 func (p *PeerProxy) ListPeers() config.PeerDictionaryConfig {

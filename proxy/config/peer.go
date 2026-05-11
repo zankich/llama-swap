@@ -7,11 +7,12 @@ import (
 
 type PeerDictionaryConfig map[string]PeerConfig
 type PeerConfig struct {
-	Proxy    string   `yaml:"proxy"`
-	ProxyURL *url.URL `yaml:"-"`
-	ApiKey   string   `yaml:"apiKey"`
-	Models   []string `yaml:"models"`
-	Filters  Filters  `yaml:"filters"`
+	Proxy    string            `yaml:"proxy"`
+	ProxyURL *url.URL          `yaml:"-"`
+	ApiKey   string            `yaml:"apiKey"`
+	Models   []string          `yaml:"models"`
+	Alias    map[string]string `yaml:"alias"`
+	Filters  Filters           `yaml:"filters"`
 
 	// Timeout settings for proxy connections
 	Timeouts TimeoutsConfig `yaml:"timeouts"`

@@ -1523,6 +1523,21 @@ peers:
 	assert.Equal(t, 120, peerConfig.Timeouts.ResponseHeader)
 }
 
+func TestConfig_PeerAlias_YAMLParsing(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+    alias:
+      model-a-v2: model-a
+`
+	config, err := LoadConfigFromReader(strings.NewReader(content))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"model-a-v2": "model-a"}, config.Peers["peer1"].Alias)
+}
+
 func TestConfig_PeerTimeoutsDefaults(t *testing.T) {
 	configYaml := `
 peers:
@@ -1543,4 +1558,124 @@ peers:
 	assert.Equal(t, 10, peerConfig.Timeouts.TLSHandshake)
 	assert.Equal(t, 1, peerConfig.Timeouts.ExpectContinue)
 	assert.Equal(t, 90, peerConfig.Timeouts.IdleConn)
+}
+
+func TestConfig_PeerAlias_Validation(t *testing.T) {
+	t.Run("alias canonical name must exist in models", func(t *testing.T) {
+		content := `
+peers:
+  test-peer:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+    alias:
+      model-a-v2: model-nonexistent
+`
+		_, err := LoadConfigFromReader(strings.NewReader(content))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "model-nonexistent")
+	})
+
+	t.Run("alias key collides with local model ID", func(t *testing.T) {
+		content := `
+models:
+  my-model:
+    cmd: echo
+peers:
+  test-peer:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+    alias:
+      my-model: model-a
+`
+		_, err := LoadConfigFromReader(strings.NewReader(content))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "my-model")
+	})
+
+	t.Run("alias key collides with local alias", func(t *testing.T) {
+		content := `
+models:
+  my-model:
+    cmd: echo
+    proxy: http://localhost:8080
+    aliases:
+      - my-alias
+peers:
+  test-peer:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+    alias:
+      my-alias: model-a
+`
+		_, err := LoadConfigFromReader(strings.NewReader(content))
+		if !assert.Error(t, err) {
+			return
+		}
+		assert.Contains(t, err.Error(), "my-alias")
+	})
+
+	t.Run("alias key collides with another peer's model", func(t *testing.T) {
+		content := `
+peers:
+  alpha:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+  beta:
+    proxy: https://peer2.example.com
+    models:
+      - model-b
+    alias:
+      model-a: model-b
+`
+		_, err := LoadConfigFromReader(strings.NewReader(content))
+		if !assert.Error(t, err) {
+			return
+		}
+		assert.Contains(t, err.Error(), "model-a")
+		assert.Contains(t, err.Error(), "alpha")
+	})
+
+	t.Run("alias key collides with another peer's alias", func(t *testing.T) {
+		content := `
+peers:
+  alpha:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+    alias:
+      shared-alias: model-a
+  beta:
+    proxy: https://peer2.example.com
+    models:
+      - model-b
+    alias:
+      shared-alias: model-b
+`
+		_, err := LoadConfigFromReader(strings.NewReader(content))
+		if !assert.Error(t, err) {
+			return
+		}
+		assert.Contains(t, err.Error(), "shared-alias")
+	})
+
+	t.Run("valid aliases pass", func(t *testing.T) {
+		content := `
+peers:
+  test-peer:
+    proxy: https://peer1.example.com
+    models:
+      - model-a
+      - model-b
+    alias:
+      model-a-v2: model-a
+      model-b-v2: model-b
+`
+		config, err := LoadConfigFromReader(strings.NewReader(content))
+		assert.NoError(t, err)
+		assert.Len(t, config.Peers["test-peer"].Alias, 2)
+	})
 }

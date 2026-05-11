@@ -644,6 +644,18 @@ func (pm *ProxyManager) listModelsHandler(c *gin.Context) {
 
 				data = append(data, record)
 			}
+			// Include peer aliases
+			if pm.config.IncludeAliasesInList {
+				for aliasName := range peer.Alias {
+					record := newRecord(aliasName, config.ModelConfig{
+						Name: fmt.Sprintf("%s: %s", peerID, aliasName),
+						Metadata: map[string]any{
+							"peerID": peerID,
+						},
+					})
+					data = append(data, record)
+				}
+			}
 		}
 	}
 
@@ -861,6 +873,14 @@ func (pm *ProxyManager) mkProxyJSONHandler(cf captureFields) func(*gin.Context) 
 				}
 			}
 
+			// Rewrite model field for aliased peer requests
+			if rewrite := pm.peerProxy.GetModelRewrite(requestedModel); rewrite != "" {
+				bodyBytes, err = sjson.SetBytes(bodyBytes, "model", rewrite)
+				if err != nil {
+					pm.sendErrorResponse(c, http.StatusInternalServerError, "error rewriting model name for peer alias")
+					return
+				}
+			}
 			nextHandler = pm.peerProxy.ProxyRequest
 		}
 
@@ -923,6 +943,7 @@ func (pm *ProxyManager) mkPostFormHandler(cf captureFields) func(*gin.Context) {
 		// Look for a matching local model first, then check peers
 		var nextHandler func(modelID string, w http.ResponseWriter, r *http.Request) error
 		var useModelName string
+		var modelRewrite string
 
 		modelID, found := pm.config.RealModelName(requestedModel)
 		if found {
@@ -942,6 +963,7 @@ func (pm *ProxyManager) mkPostFormHandler(cf captureFields) func(*gin.Context) {
 		} else if pm.peerProxy != nil && pm.peerProxy.HasPeerModel(requestedModel) {
 			pm.proxyLogger.Debugf("ProxyManager using ProxyPeer for model: %s", requestedModel)
 			modelID = requestedModel
+			modelRewrite = pm.peerProxy.GetModelRewrite(requestedModel)
 			nextHandler = pm.peerProxy.ProxyRequest
 		}
 
@@ -961,9 +983,10 @@ func (pm *ProxyManager) mkPostFormHandler(cf captureFields) func(*gin.Context) {
 				fieldValue := value
 				// If this is the model field and we have a profile, use just the model name
 				if key == "model" {
-					// # issue #69 allow custom model names to be sent to upstream
 					if useModelName != "" {
 						fieldValue = useModelName
+					} else if modelRewrite != "" {
+						fieldValue = modelRewrite
 					} else {
 						fieldValue = requestedModel
 					}
@@ -1073,6 +1096,11 @@ func (pm *ProxyManager) proxyGETModelHandler(c *gin.Context) {
 	} else if pm.peerProxy != nil && pm.peerProxy.HasPeerModel(requestedModel) {
 		modelID = requestedModel
 		pm.proxyLogger.Debugf("ProxyManager using ProxyPeer for model: %s", requestedModel)
+		if rewrite := pm.peerProxy.GetModelRewrite(requestedModel); rewrite != "" {
+			query := c.Request.URL.Query()
+			query.Set("model", rewrite)
+			c.Request.URL.RawQuery = query.Encode()
+		}
 		nextHandler = pm.peerProxy.ProxyRequest
 	}
 

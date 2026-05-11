@@ -19,6 +19,7 @@ import (
 	"github.com/mostlygeek/llama-swap/event"
 	"github.com/mostlygeek/llama-swap/proxy/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
@@ -1878,4 +1879,40 @@ models:
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "/messages")
 	})
+}
+
+func TestProxyManager_ListModelsHandler_PeerAliases(t *testing.T) {
+	cfg := testConfigFromYAML(t, `
+healthCheckTimeout: 15
+logLevel: error
+includeAliasesInList: true
+peers:
+  test-peer:
+    proxy: http://peer1:8080
+    models:
+      - real-model
+    alias:
+      alias-model: real-model
+`)
+
+	proxy := New(cfg)
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	w := CreateTestResponseRecorder()
+	proxy.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	ids := make([]string, len(response.Data))
+	for i, item := range response.Data {
+		ids[i] = item["id"].(string)
+	}
+
+	assert.Contains(t, ids, "real-model")
+	assert.Contains(t, ids, "alias-model")
 }
