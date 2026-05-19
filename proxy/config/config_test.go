@@ -1650,3 +1650,21 @@ peers:
 	assert.Equal(t, "model-a", cfg.Peers["peer1"].Alias["model-a:nothink"])
 	assert.Equal(t, "model-b", cfg.Peers["peer1"].Alias["model-b:nothink"])
 }
+
+func TestConfig_PeerSetParamsByID_LongestModelMatch(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: http://localhost:8080
+    models:
+      - meta
+      - meta-llama
+    filters:
+      setParamsByID:
+        "meta-llama:creative":
+          temperature: 1.0
+`
+	cfg, err := LoadConfigFromReader(strings.NewReader(content))
+	require.NoError(t, err)
+	assert.Equal(t, "meta-llama", cfg.Peers["peer1"].Alias["meta-llama:creative"])
+}

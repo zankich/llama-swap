@@ -628,11 +628,18 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 						if peerConfig.Alias == nil {
 							peerConfig.Alias = make(map[string]string)
 						}
-						canonicalName := key
+						// Find longest matching model name to handle cases
+						// where one model name is a prefix of another
+						canonicalName := ""
 						for _, modelName := range peerConfig.Models {
-							if strings.HasPrefix(key, modelName+":") || key == modelName {
+							if (strings.HasPrefix(key, modelName+":") || key == modelName) && len(modelName) > len(canonicalName) {
 								canonicalName = modelName
-								break
+							}
+						}
+						if canonicalName == "" {
+							// No model matched — extract from first colon segment
+							if idx := strings.Index(key, ":"); idx > 0 {
+								canonicalName = key[:idx]
 							}
 						}
 						if _, exists := peerConfig.Alias[key]; exists {
