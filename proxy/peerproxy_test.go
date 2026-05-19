@@ -309,3 +309,37 @@ func TestNewPeerProxy_CustomTimeouts(t *testing.T) {
 	// ForceAttemptHTTP2 should be enabled
 	assert.True(t, transport.ForceAttemptHTTP2)
 }
+
+func TestNewPeerProxy_Aliases(t *testing.T) {
+	proxyURL, _ := url.Parse("http://peer1.example.com:8080")
+	peers := config.PeerDictionaryConfig{
+		"peer1": config.PeerConfig{
+			Proxy:    "http://peer1.example.com:8080",
+			ProxyURL: proxyURL,
+			Models:   []string{"model-a"},
+			Alias:    map[string]string{"model-a-v2": "model-a"},
+		},
+	}
+	pm, err := NewPeerProxy(peers, testLogger)
+	require.NoError(t, err)
+	assert.True(t, pm.HasPeerModel("model-a"))
+	assert.True(t, pm.HasPeerModel("model-a-v2"))
+	assert.Equal(t, "", pm.GetModelRewrite("model-a"))
+	assert.Equal(t, "model-a", pm.GetModelRewrite("model-a-v2"))
+}
+
+func TestNewPeerProxy_AliasDuplicateWarning(t *testing.T) {
+	proxyURL, _ := url.Parse("http://peer1.example.com:8080")
+	peers := config.PeerDictionaryConfig{
+		"peer1": config.PeerConfig{
+			Proxy:    "http://peer1.example.com:8080",
+			ProxyURL: proxyURL,
+			Models:   []string{"model-a"},
+			Alias:    map[string]string{"model-a": "model-a"},
+		},
+	}
+	pm, err := NewPeerProxy(peers, testLogger)
+	require.NoError(t, err)
+	assert.True(t, pm.HasPeerModel("model-a"))
+	assert.Equal(t, "", pm.GetModelRewrite("model-a"))
+}
