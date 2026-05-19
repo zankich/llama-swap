@@ -207,3 +207,24 @@ filters:
 		t.Errorf("expected max_tokens 1000, got %v", config.Filters.SetParams["max_tokens"])
 	}
 }
+
+func TestPeerConfig_Alias(t *testing.T) {
+	yamlData := `
+proxy: https://api.example.com
+models:
+  - model-a
+alias:
+  model-a-v2: model-a
+`
+	var config PeerConfig
+	err := yaml.Unmarshal([]byte(yamlData), &config)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.Alias == nil {
+		t.Fatal("Alias should not be nil")
+	}
+	if config.Alias["model-a-v2"] != "model-a" {
+		t.Errorf("expected alias model-a-v2 -> model-a, got %v", config.Alias)
+	}
+}
