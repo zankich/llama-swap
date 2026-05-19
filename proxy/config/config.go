@@ -545,7 +545,45 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 				return Config{}, err
 			}
 		}
+
+		// Validate aliases reference models in this peer's models list
+		for aliasName, canonicalName := range peerConfig.Alias {
+			found := false
+			for _, modelName := range peerConfig.Models {
+				if modelName == canonicalName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return Config{}, fmt.Errorf("peers.%s: alias '%s' references model '%s' not in models list", peerName, aliasName, canonicalName)
+			}
+		}
+
 		config.Peers[peerName] = peerConfig
+	}
+
+	// Validate peer aliases don't collide with local models, local aliases, or other peer names/aliases
+	claimed := make(map[string]string)
+	for modelID := range config.Models {
+		claimed[modelID] = fmt.Sprintf("model %s", modelID)
+	}
+	for alias := range config.aliases {
+		claimed[alias] = fmt.Sprintf("alias %s", alias)
+	}
+	for peerName, peerConfig := range config.Peers {
+		for _, modelID := range peerConfig.Models {
+			if _, exists := claimed[modelID]; !exists {
+				claimed[modelID] = fmt.Sprintf("peer %s model %s", peerName, modelID)
+			}
+		}
+	}
+	for peerName, peerConfig := range config.Peers {
+		for aliasKey := range peerConfig.Alias {
+			if source, exists := claimed[aliasKey]; exists {
+				return Config{}, fmt.Errorf("peers.%s: alias '%s' conflicts with %s", peerName, aliasKey, source)
+			}
+		}
 	}
 
 	return config, nil

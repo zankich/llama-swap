@@ -1544,3 +1544,37 @@ peers:
 	assert.Equal(t, 1, peerConfig.Timeouts.ExpectContinue)
 	assert.Equal(t, 90, peerConfig.Timeouts.IdleConn)
 }
+
+func TestConfig_PeerAlias_CanonicalNameNotInModels(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: http://localhost:8080
+    models:
+      - model-a
+    alias:
+      model-a-v2: model-b
+`
+	_, err := LoadConfigFromReader(strings.NewReader(content))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "model-b")
+}
+
+func TestConfig_PeerAlias_CollisionWithLocalModel(t *testing.T) {
+	content := `
+models:
+  local-model:
+    cmd: echo
+    proxy: "http://127.0.0.1:${PORT}"
+peers:
+  peer1:
+    proxy: http://localhost:8080
+    models:
+      - model-a
+    alias:
+      local-model: model-a
+`
+	_, err := LoadConfigFromReader(strings.NewReader(content))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "local-model")
+}
