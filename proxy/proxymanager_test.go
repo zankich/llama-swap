@@ -2039,3 +2039,67 @@ models:
 	assert.True(t, found["peer-model"], "peer model should be listed")
 	assert.True(t, found["peer-model-v2"], "peer alias should be listed")
 }
+
+func TestProxyManager_PeerSetParamsByID(t *testing.T) {
+	var receivedBody string
+	peerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = string(body)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer peerServer.Close()
+
+	cfg := testConfigFromYAML(t, fmt.Sprintf(`
+logLevel: error
+peers:
+  peer1:
+    proxy: %s
+    models:
+      - peer-model
+    filters:
+      setParams:
+        temperature: 0.7
+      setParamsByID:
+        "peer-model:creative":
+          temperature: 1.2
+          top_p: 0.95
+models:
+  local-model:
+    cmd: echo {{RESPONDER}} --port ${PORT} --silent --respond local-model
+`, peerServer.URL))
+
+	proxy := New(cfg)
+	defer proxy.StopProcesses(StopImmediately)
+	injectTestHandlers(proxy, nil)
+
+	tests := []struct {
+		name            string
+		model           string
+		wantTemperature string
+		wantModel       string
+	}{
+		{"base model uses setParams", "peer-model", "0.7", "peer-model"},
+		{"creative variant uses setParamsByID", "peer-model:creative", "1.2", "peer-model"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			receivedBody = ""
+			w := CreateTestResponseRecorder()
+			req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(
+				fmt.Sprintf(`{"model":"%s","messages":[{"role":"user","content":"hi"}]}`, tt.model),
+			))
+			req.Header.Set("Content-Type", "application/json")
+			proxy.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, tt.wantTemperature, gjson.Get(receivedBody, "temperature").String())
+			assert.Equal(t, tt.wantModel, gjson.Get(receivedBody, "model").String())
+
+			if tt.name == "creative variant uses setParamsByID" {
+				assert.Equal(t, "0.95", gjson.Get(receivedBody, "top_p").String())
+			}
+		})
+	}
+}

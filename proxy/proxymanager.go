@@ -881,6 +881,17 @@ func (pm *ProxyManager) mkProxyJSONHandler(cf captureFields) func(*gin.Context) 
 				}
 			}
 
+			// Apply setParamsByID for peers
+			setParamsByIDParams, setParamsByIDKeys := peerFilters.SanitizedSetParamsByID(requestedModel)
+			for _, key := range setParamsByIDKeys {
+				pm.proxyLogger.Debugf("<%s> setting param by id: %s", requestedModel, key)
+				bodyBytes, err = sjson.SetBytes(bodyBytes, key, setParamsByIDParams[key])
+				if err != nil {
+					pm.sendErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("error setting parameter %s in request", key))
+					return
+				}
+			}
+
 			nextHandler = pm.peerProxy.ProxyRequest
 		}
 
