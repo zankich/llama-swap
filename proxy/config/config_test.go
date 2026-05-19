@@ -1621,3 +1621,32 @@ peers:
 	assert.Contains(t, keys, "reasoning_effort")
 	assert.Equal(t, "high", params["reasoning_effort"])
 }
+
+func TestConfig_PeerSetParamsByID_ModelIDExpansion(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: http://localhost:8080
+    models:
+      - model-a
+      - model-b
+    filters:
+      setParamsByID:
+        "${MODEL_ID}:nothink":
+          chat_template_kwargs:
+            enable_thinking: false
+`
+	cfg, err := LoadConfigFromReader(strings.NewReader(content))
+	require.NoError(t, err)
+
+	params, keys := cfg.Peers["peer1"].Filters.SanitizedSetParamsByID("model-a:nothink")
+	require.NotNil(t, params)
+	assert.Contains(t, keys, "chat_template_kwargs")
+
+	params2, keys2 := cfg.Peers["peer1"].Filters.SanitizedSetParamsByID("model-b:nothink")
+	require.NotNil(t, params2)
+	assert.Contains(t, keys2, "chat_template_kwargs")
+
+	assert.Equal(t, "model-a", cfg.Peers["peer1"].Alias["model-a:nothink"])
+	assert.Equal(t, "model-b", cfg.Peers["peer1"].Alias["model-b:nothink"])
+}

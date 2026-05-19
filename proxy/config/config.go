@@ -579,6 +579,72 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 			}
 		}
 
+		// Expand ${MODEL_ID} in setParamsByID keys and auto-register aliases
+		if len(peerConfig.Filters.SetParamsByID) > 0 {
+			expanded := make(map[string]map[string]any)
+			for key, paramMap := range peerConfig.Filters.SetParamsByID {
+				if strings.Contains(key, "${MODEL_ID}") {
+					for _, modelName := range peerConfig.Models {
+						newKey := strings.ReplaceAll(key, "${MODEL_ID}", modelName)
+						newValAny, err := substituteMacroInValue(any(paramMap), "MODEL_ID", modelName)
+						if err != nil {
+							return Config{}, fmt.Errorf("peers.%s.filters.setParamsByID: %w", peerName, err)
+						}
+						newParamMap, ok := newValAny.(map[string]any)
+						if !ok {
+							return Config{}, fmt.Errorf("peers.%s.filters.setParamsByID: unexpected type after MODEL_ID expansion", peerName)
+						}
+						expanded[newKey] = newParamMap
+
+						// Auto-register as alias if not a model name
+						isPeerModel := false
+						for _, m := range peerConfig.Models {
+							if newKey == m {
+								isPeerModel = true
+								break
+							}
+						}
+						if !isPeerModel {
+							if peerConfig.Alias == nil {
+								peerConfig.Alias = make(map[string]string)
+							}
+							if _, exists := peerConfig.Alias[newKey]; exists {
+								return Config{}, fmt.Errorf("peers.%s: setParamsByID key '%s' conflicts with explicit alias", peerName, newKey)
+							}
+							peerConfig.Alias[newKey] = modelName
+						}
+					}
+				} else {
+					// Explicit key - register as alias if not a model name
+					expanded[key] = paramMap
+					isBaseModel := false
+					for _, modelName := range peerConfig.Models {
+						if key == modelName {
+							isBaseModel = true
+							break
+						}
+					}
+					if !isBaseModel {
+						if peerConfig.Alias == nil {
+							peerConfig.Alias = make(map[string]string)
+						}
+						canonicalName := key
+						for _, modelName := range peerConfig.Models {
+							if strings.HasPrefix(key, modelName+":") || key == modelName {
+								canonicalName = modelName
+								break
+							}
+						}
+						if _, exists := peerConfig.Alias[key]; exists {
+							return Config{}, fmt.Errorf("peers.%s: setParamsByID key '%s' conflicts with explicit alias", peerName, key)
+						}
+						peerConfig.Alias[key] = canonicalName
+					}
+				}
+			}
+			peerConfig.Filters.SetParamsByID = expanded
+		}
+
 		// Validate aliases reference models in this peer's models list
 		for aliasName, canonicalName := range peerConfig.Alias {
 			found := false
