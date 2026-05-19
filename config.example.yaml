@@ -509,3 +509,10 @@ peers:
         provider:
           data_collection: "deny"
           zdr: true
+
+      # alias: a map of client-facing alias names to canonical model names
+      # - optional, default: empty dictionary
+      # - useful for routing the same model through different API compatibility layers
+      # - the canonical name (value) must exist in this peer's models list
+      # alias:
+      #   my-model-oai: my-model
