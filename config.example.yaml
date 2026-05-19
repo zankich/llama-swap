@@ -516,3 +516,14 @@ peers:
       # - the canonical name (value) must exist in this peer's models list
       # alias:
       #   my-model-oai: my-model
+
+	      # setParamsByID: maps model variant names to parameters to set/override
+	      # - optional, default: empty dictionary
+	      # - supports ${MODEL_ID} macro which expands per model in the peer's list
+	      # - expanded keys are auto-registered as aliases
+	      # - applied after setParams, so it can override those values
+	      # - protected params like "model" cannot be set
+	      # setParamsByID:
+	      #   "${MODEL_ID}:nothink":
+	      #     chat_template_kwargs:
+	      #       enable_thinking: false
