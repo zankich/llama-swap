@@ -1578,3 +1578,24 @@ peers:
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "local-model")
 }
+
+func TestConfig_PeerAlias_CollisionWithOtherPeerAlias(t *testing.T) {
+	content := `
+peers:
+  peer1:
+    proxy: http://localhost:8080
+    models:
+      - model-a
+    alias:
+      shared-name: model-a
+  peer2:
+    proxy: http://localhost:8081
+    models:
+      - model-b
+    alias:
+      shared-name: model-b
+`
+	_, err := LoadConfigFromReader(strings.NewReader(content))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "shared-name")
+}

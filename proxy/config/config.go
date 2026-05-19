@@ -579,10 +579,11 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 		}
 	}
 	for peerName, peerConfig := range config.Peers {
-		for aliasKey := range peerConfig.Alias {
-			if source, exists := claimed[aliasKey]; exists {
-				return Config{}, fmt.Errorf("peers.%s: alias '%s' conflicts with %s", peerName, aliasKey, source)
+		for aliasName := range peerConfig.Alias {
+			if source, exists := claimed[aliasName]; exists {
+				return Config{}, fmt.Errorf("peers.%s: alias '%s' conflicts with %s", peerName, aliasName, source)
 			}
+			claimed[aliasName] = fmt.Sprintf("peer %s alias %s", peerName, aliasName)
 		}
 	}
 

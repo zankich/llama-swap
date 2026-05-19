@@ -848,7 +848,11 @@ func (pm *ProxyManager) mkProxyJSONHandler(cf captureFields) func(*gin.Context) 
 
 			// Rewrite model field to canonical name for aliases
 			if rewrite := pm.peerProxy.GetModelRewrite(requestedModel); rewrite != "" {
-				bodyBytes, _ = sjson.SetBytes(bodyBytes, "model", rewrite)
+				bodyBytes, err = sjson.SetBytes(bodyBytes, "model", rewrite)
+				if err != nil {
+					pm.sendErrorResponse(c, http.StatusInternalServerError, "error rewriting model name")
+					return
+				}
 				modelID = rewrite
 			}
 
