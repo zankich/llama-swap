@@ -1599,3 +1599,25 @@ peers:
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "shared-name")
 }
+
+func TestConfig_PeerSetParamsByID_GlobalMacroSubstitution(t *testing.T) {
+	content := `
+macros:
+  EFFORT: high
+peers:
+  peer1:
+    proxy: http://localhost:8080
+    models:
+      - model-a
+    filters:
+      setParamsByID:
+        "model-a:${EFFORT}":
+          reasoning_effort: ${EFFORT}
+`
+	cfg, err := LoadConfigFromReader(strings.NewReader(content))
+	require.NoError(t, err)
+	params, keys := cfg.Peers["peer1"].Filters.SanitizedSetParamsByID("model-a:high")
+	require.NotNil(t, params)
+	assert.Contains(t, keys, "reasoning_effort")
+	assert.Equal(t, "high", params["reasoning_effort"])
+}

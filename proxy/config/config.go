@@ -531,6 +531,24 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 				}
 				peerConfig.Filters.SetParams = result.(map[string]any)
 			}
+
+			// Substitute macros in setParamsByID (type-preserving)
+			if len(peerConfig.Filters.SetParamsByID) > 0 {
+				newSetParamsByID := make(map[string]map[string]any, len(peerConfig.Filters.SetParamsByID))
+				for key, paramMap := range peerConfig.Filters.SetParamsByID {
+					newKey := strings.ReplaceAll(key, macroSlug, macroStr)
+					newValAny, err := substituteMacroInValue(any(paramMap), entry.Name, entry.Value)
+					if err != nil {
+						return Config{}, fmt.Errorf("peers.%s.filters.setParamsByID: %w", peerName, err)
+					}
+					newParamMap, ok := newValAny.(map[string]any)
+					if !ok {
+						return Config{}, fmt.Errorf("peers.%s.filters.setParamsByID: unexpected type after macro substitution", peerName)
+					}
+					newSetParamsByID[newKey] = newParamMap
+				}
+				peerConfig.Filters.SetParamsByID = newSetParamsByID
+			}
 		}
 
 		// Validate no unknown macros remain
@@ -543,6 +561,21 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 		if len(peerConfig.Filters.SetParams) > 0 {
 			if err := validateNestedForUnknownMacros(peerConfig.Filters.SetParams, fmt.Sprintf("peers.%s.filters.setParams", peerName)); err != nil {
 				return Config{}, err
+			}
+		}
+
+		// Validate unknown macros in setParamsByID (allow ${MODEL_ID} to remain)
+		if len(peerConfig.Filters.SetParamsByID) > 0 {
+			for key, paramMap := range peerConfig.Filters.SetParamsByID {
+				if matches := macroPatternRegex.FindAllStringSubmatch(key, -1); len(matches) > 0 {
+					macroName := matches[0][1]
+					if macroName != "MODEL_ID" {
+						return Config{}, fmt.Errorf("peers.%s.filters.setParamsByID key: unknown macro '${%s}'", peerName, macroName)
+					}
+				}
+				if err := validateNestedForUnknownMacros(any(paramMap), fmt.Sprintf("peers.%s.filters.setParamsByID[%s]", peerName, key)); err != nil {
+					return Config{}, err
+				}
 			}
 		}
 
