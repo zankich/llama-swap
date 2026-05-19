@@ -101,6 +101,13 @@ func (pm *ProxyManager) getModelStatus() []Model {
 					PeerID: peerID,
 				})
 			}
+			// add peer aliases
+			for aliasName := range peer.Alias {
+				models = append(models, Model{
+					Id:     aliasName,
+					PeerID: peerID,
+				})
+			}
 		}
 	}
 

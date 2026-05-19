@@ -1999,3 +1999,43 @@ models:
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "peer-model", receivedModel, "model form field should be rewritten to canonical name")
 }
+
+func TestProxyManager_ListModelsHandler_PeerAliases(t *testing.T) {
+	peerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer peerServer.Close()
+
+	cfg := testConfigFromYAML(t, fmt.Sprintf(`
+logLevel: error
+peers:
+  peer1:
+    proxy: %s
+    models:
+      - peer-model
+    alias:
+      peer-model-v2: peer-model
+models:
+  local-model:
+    cmd: {{RESPONDER}} --port ${PORT} --silent --respond local-model
+`, peerServer.URL))
+
+	proxy := New(cfg)
+	defer proxy.StopProcesses(StopImmediately)
+	injectTestHandlers(proxy, nil)
+
+	w := CreateTestResponseRecorder()
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	proxy.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	modelIDs := gjson.Get(body, "data.#.id").Array()
+	found := map[string]bool{}
+	for _, m := range modelIDs {
+		found[m.String()] = true
+	}
+	assert.True(t, found["peer-model"], "peer model should be listed")
+	assert.True(t, found["peer-model-v2"], "peer alias should be listed")
+}

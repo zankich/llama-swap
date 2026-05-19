@@ -644,6 +644,16 @@ func (pm *ProxyManager) listModelsHandler(c *gin.Context) {
 
 				data = append(data, record)
 			}
+			// add peer aliases
+			for aliasName := range peer.Alias {
+				record := newRecord(aliasName, config.ModelConfig{
+					Name: fmt.Sprintf("%s: %s", peerID, aliasName),
+					Metadata: map[string]any{
+						"peerID": peerID,
+					},
+				})
+				data = append(data, record)
+			}
 		}
 	}
 
