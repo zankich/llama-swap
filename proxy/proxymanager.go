@@ -836,6 +836,12 @@ func (pm *ProxyManager) mkProxyJSONHandler(cf captureFields) func(*gin.Context) 
 			pm.proxyLogger.Debugf("ProxyManager using ProxyPeer for model: %s", requestedModel)
 			modelID = requestedModel
 
+			// Rewrite model field to canonical name for aliases
+			if rewrite := pm.peerProxy.GetModelRewrite(requestedModel); rewrite != "" {
+				bodyBytes, _ = sjson.SetBytes(bodyBytes, "model", rewrite)
+				modelID = rewrite
+			}
+
 			// issue #453 apply filters for peer requests
 			peerFilters := pm.peerProxy.GetPeerFilters(requestedModel)
 
@@ -942,6 +948,9 @@ func (pm *ProxyManager) mkPostFormHandler(cf captureFields) func(*gin.Context) {
 		} else if pm.peerProxy != nil && pm.peerProxy.HasPeerModel(requestedModel) {
 			pm.proxyLogger.Debugf("ProxyManager using ProxyPeer for model: %s", requestedModel)
 			modelID = requestedModel
+			if rewrite := pm.peerProxy.GetModelRewrite(requestedModel); rewrite != "" {
+				useModelName = rewrite
+			}
 			nextHandler = pm.peerProxy.ProxyRequest
 		}
 
@@ -1072,6 +1081,12 @@ func (pm *ProxyManager) proxyGETModelHandler(c *gin.Context) {
 		pm.proxyLogger.Debugf("ProxyManager using local Process for model: %s", requestedModel)
 	} else if pm.peerProxy != nil && pm.peerProxy.HasPeerModel(requestedModel) {
 		modelID = requestedModel
+		if rewrite := pm.peerProxy.GetModelRewrite(requestedModel); rewrite != "" {
+			q := c.Request.URL.Query()
+			q.Set("model", rewrite)
+			c.Request.URL.RawQuery = q.Encode()
+			modelID = rewrite
+		}
 		pm.proxyLogger.Debugf("ProxyManager using ProxyPeer for model: %s", requestedModel)
 		nextHandler = pm.peerProxy.ProxyRequest
 	}

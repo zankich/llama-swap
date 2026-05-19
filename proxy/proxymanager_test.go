@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"mime/multipart"
 	"net/http"
@@ -1878,4 +1879,123 @@ models:
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "/messages")
 	})
+}
+
+func TestProxyManager_PeerModelRewrite(t *testing.T) {
+	var receivedBody string
+	peerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = string(body)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer peerServer.Close()
+
+	cfg := testConfigFromYAML(t, fmt.Sprintf(`
+logLevel: error
+peers:
+  peer1:
+    proxy: %s
+    models:
+      - peer-model
+    alias:
+      peer-model-v2: peer-model
+models:
+  local-model:
+    cmd: {{RESPONDER}} --port ${PORT} --silent --respond local-model
+`, peerServer.URL))
+
+	proxy := New(cfg)
+	defer proxy.StopProcesses(StopImmediately)
+	injectTestHandlers(proxy, nil)
+
+	w := CreateTestResponseRecorder()
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(
+		`{"model":"peer-model-v2","messages":[{"role":"user","content":"hi"}]}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
+	proxy.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "peer-model", gjson.Get(receivedBody, "model").String())
+}
+
+func TestProxyManager_PeerGETModelRewrite(t *testing.T) {
+	var receivedModel string
+	peerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedModel = r.URL.Query().Get("model")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"data":[{"id":"test"}]}`))
+	}))
+	defer peerServer.Close()
+
+	cfg := testConfigFromYAML(t, fmt.Sprintf(`
+logLevel: error
+peers:
+  peer1:
+    proxy: %s
+    models:
+      - peer-model
+    alias:
+      peer-model-v2: peer-model
+models:
+  local-model:
+    cmd: {{RESPONDER}} --port ${PORT} --silent --respond local-model
+`, peerServer.URL))
+
+	proxy := New(cfg)
+	defer proxy.StopProcesses(StopImmediately)
+	injectTestHandlers(proxy, nil)
+
+	receivedModel = ""
+	w := CreateTestResponseRecorder()
+	req := httptest.NewRequest("GET", "/v1/audio/voices?model=peer-model-v2", nil)
+	proxy.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "peer-model", receivedModel, "model query param should be rewritten to canonical name")
+}
+
+func TestProxyManager_PeerMultipartModelRewrite(t *testing.T) {
+	var receivedModel string
+	peerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseMultipartForm(32 << 20)
+		receivedModel = r.MultipartForm.Value["model"][0]
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer peerServer.Close()
+
+	cfg := testConfigFromYAML(t, fmt.Sprintf(`
+logLevel: error
+peers:
+  peer1:
+    proxy: %s
+    models:
+      - peer-model
+    alias:
+      peer-model-v2: peer-model
+models:
+  local-model:
+    cmd: {{RESPONDER}} --port ${PORT} --silent --respond local-model
+`, peerServer.URL))
+
+	proxy := New(cfg)
+	defer proxy.StopProcesses(StopImmediately)
+	injectTestHandlers(proxy, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	writer.WriteField("model", "peer-model-v2")
+	writer.WriteField("message", "hello")
+	writer.Close()
+
+	receivedModel = ""
+	w := CreateTestResponseRecorder()
+	req := httptest.NewRequest("POST", "/v1/audio/transcriptions", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	proxy.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "peer-model", receivedModel, "model form field should be rewritten to canonical name")
 }
